@@ -1,4 +1,4 @@
-import type { Device, EmergencyContact, MisuseEvent, SOSAlert, User } from '../types';
+import type { Device, EmergencyContact, IdentityVerification, MisuseEvent, SOSAlert, User } from '../types';
 
 const keys = {
   users: 'shaktisos-users',
@@ -7,11 +7,13 @@ const keys = {
   alerts: 'shaktisos-alerts',
   session: 'shaktisos-session',
   misuse: 'shaktisos-misuse',
+  identities: 'shaktisos-identities',
 };
 
 const demoUsers: User[] = [
-  { id: 'user-1', name: 'Aarohi Sharma', email: 'user@shaktisos.demo', password: 'demo123', role: 'user' },
-  { id: 'operator-1', name: 'Response Operator', email: 'operator@shaktisos.demo', password: 'demo123', role: 'operator' },
+  { id: 'user-1', name: 'Aarohi Sharma', email: 'user@shaktisos.demo', password: 'demo123', role: 'user', verificationStatus: 'Verified' },
+  { id: 'operator-1', name: 'Response Operator', email: 'operator@shaktisos.demo', password: 'demo123', role: 'operator', verificationStatus: 'Verified' },
+  { id: 'admin-1', name: 'Identity Administrator', email: 'admin@shaktisos.demo', password: 'demo123', role: 'admin', verificationStatus: 'Verified' },
 ];
 
 const defaultContacts: EmergencyContact[] = [
@@ -47,10 +49,11 @@ export function seedDemoData(): void {
   if (!localStorage.getItem(keys.device)) write(keys.device, defaultDevice);
   if (!localStorage.getItem(keys.alerts)) write<SOSAlert[]>(keys.alerts, []);
   if (!localStorage.getItem(keys.misuse)) write<MisuseEvent[]>(keys.misuse, []);
+  if (!localStorage.getItem(keys.identities)) write<IdentityVerification[]>(keys.identities, []);
 }
 
 export const storage = {
-  users: () => read<User[]>(keys.users, demoUsers),
+  users: () => read<User[]>(keys.users, demoUsers).map((user) => ({ ...user, verificationStatus: user.verificationStatus ?? 'Pending Verification' })),
   saveUsers: (users: User[]) => write(keys.users, users),
   contacts: () => read<EmergencyContact[]>(keys.contacts, defaultContacts),
   saveContacts: (contacts: EmergencyContact[]) => write(keys.contacts, contacts),
@@ -60,6 +63,8 @@ export const storage = {
   saveAlerts: (alerts: SOSAlert[]) => write(keys.alerts, alerts),
   misuse: () => read<MisuseEvent[]>(keys.misuse, []),
   saveMisuse: (events: MisuseEvent[]) => write(keys.misuse, events),
+  identities: () => read<IdentityVerification[]>(keys.identities, []),
+  saveIdentities: (identities: IdentityVerification[]) => write(keys.identities, identities),
   session: () => read<User | null>(keys.session, null),
   saveSession: (user: User | null) => user ? write(keys.session, user) : localStorage.removeItem(keys.session),
 };
@@ -68,11 +73,50 @@ export function authenticate(email: string, password: string): User | null {
   return storage.users().find((user) => user.email.toLowerCase() === email.trim().toLowerCase() && user.password === password) ?? null;
 }
 
-export function registerUser(name: string, email: string, password: string): User | null {
+export async function hashSensitiveData(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value.trim());
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export function maskAadhaar(aadhaar: string): string {
+  return `XXXX-XXXX-${aadhaar.slice(-4)}`;
+}
+
+export interface RegistrationInput {
+  fullName: string;
+  mobileNumber: string;
+  email: string;
+  password: string;
+  dateOfBirth: string;
+  address: string;
+  aadhaarNumber: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  emergencyContactRelationship: string;
+}
+
+export async function registerUser(input: RegistrationInput): Promise<User | null> {
   const users = storage.users();
-  if (users.some((user) => user.email.toLowerCase() === email.trim().toLowerCase())) return null;
-  const user: User = { id: `user-${Date.now()}`, name: name.trim(), email: email.trim(), password, role: 'user' };
+  if (users.some((user) => user.email.toLowerCase() === input.email.trim().toLowerCase())) return null;
+  const user: User = { id: `user-${Date.now()}`, name: input.fullName.trim(), email: input.email.trim(), password: input.password, role: 'user', verificationStatus: 'Pending Verification' };
+  const identity: IdentityVerification = {
+    id: `identity-${Date.now()}`,
+    userId: user.id,
+    fullName: input.fullName.trim(),
+    mobileNumber: input.mobileNumber.trim(),
+    dateOfBirth: input.dateOfBirth,
+    address: input.address.trim(),
+    aadhaarHash: await hashSensitiveData(input.aadhaarNumber),
+    aadhaarMasked: maskAadhaar(input.aadhaarNumber),
+    emergencyContactName: input.emergencyContactName.trim(),
+    emergencyContactPhone: input.emergencyContactPhone.trim(),
+    emergencyContactRelationship: input.emergencyContactRelationship.trim(),
+    consentedAt: new Date().toISOString(),
+    status: 'Pending Verification',
+  };
   storage.saveUsers([...users, user]);
+  storage.saveIdentities([...storage.identities(), identity]);
   return user;
 }
 

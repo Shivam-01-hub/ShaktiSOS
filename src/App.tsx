@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Activity, AlertTriangle, BatteryCharging, Bell, Camera, Check, ChevronRight, CircleHelp, ContactRound, Cpu,
   Gauge, HeartHandshake, History, Home, KeyRound, LogOut, MapPin, Menu, Plus, Radio, Settings, ShieldCheck,
-  Signal, Siren, Smartphone, Trash2, Video, Wifi, X,
+  Signal, Siren, Smartphone, Trash2, UserRound, Video, Wifi, X,
 } from 'lucide-react';
 import { appendSimulatedLocation, createDemoAlert, demoLocation } from './services/sosService';
 import { createEvidence, progressEvidence, requestCameraPermission } from './services/evidenceService';
 import { authenticate, registerUser, resetDemoData, storage } from './services/storage';
-import type { AlertClassification, AlertStatus, Device, EmergencyContact, MisuseEvent, SOSAlert, User } from './types';
+import type { AlertClassification, AlertStatus, Device, EmergencyContact, IdentityVerification, MisuseEvent, SOSAlert, User, VerificationStatus } from './types';
 
 type Screen = 'home' | 'contacts' | 'device' | 'history' | 'settings' | 'active' | 'operator';
 const statusLabels: AlertStatus[] = ['RECEIVED', 'ACKNOWLEDGED', 'ASSISTANCE DISPATCHED', 'RESOLVED'];
@@ -76,7 +76,7 @@ function App() {
       </header>
       {menuOpen && <div className="menu-popover"><p>Signed in as <strong>{user.name}</strong></p>{user.role !== 'operator' && <button onClick={() => navigate('settings')}><Settings size={16} /> Settings</button>}<button onClick={signOut}><LogOut size={16} /> Sign out</button></div>}
       <main className="main-content">
-        {user.role === 'operator' ? <OperatorDashboard alerts={alerts} onUpdate={updateAlert} /> : (
+        {user.role === 'admin' ? <AdminDashboard /> : user.role === 'operator' ? <OperatorDashboard alerts={alerts} onUpdate={updateAlert} /> : (
           <>
             {screen === 'home' && <HomeScreen user={user} activeAlert={activeAlert} stealthMode={stealthActive} device={device} onSos={() => setCountdown(5)} onNavigate={navigate} />}
             {screen === 'contacts' && <ContactsScreen user={user} />}
@@ -103,15 +103,38 @@ function Auth({ onLogin }: { onLogin: (user: User) => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('user@shaktisos.demo');
   const [password, setPassword] = useState('demo123');
-  const [name, setName] = useState('');
   const [error, setError] = useState('');
-  const submit = (event: React.FormEvent) => {
+  const [submitting, setSubmitting] = useState(false);
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const found = mode === 'register' ? registerUser(name, email, password) : authenticate(email, password);
+    setError('');
+    setSubmitting(true);
+    const form = new FormData(event.currentTarget);
+    const registrationAadhaar = String(form.get('aadhaarNumber') ?? '');
+    if (mode === 'register' && !/^\d{12}$/.test(registrationAadhaar)) {
+      setSubmitting(false);
+      setError('Aadhaar number must contain exactly 12 digits.');
+      return;
+    }
+    const found = mode === 'register'
+      ? await registerUser({
+        fullName: String(form.get('fullName') ?? ''),
+        mobileNumber: String(form.get('mobileNumber') ?? ''),
+        email: String(form.get('email') ?? ''),
+        password: String(form.get('password') ?? ''),
+        dateOfBirth: String(form.get('dateOfBirth') ?? ''),
+        address: String(form.get('address') ?? ''),
+        aadhaarNumber: String(form.get('aadhaarNumber') ?? ''),
+        emergencyContactName: String(form.get('emergencyContactName') ?? ''),
+        emergencyContactPhone: String(form.get('emergencyContactPhone') ?? ''),
+        emergencyContactRelationship: String(form.get('emergencyContactRelationship') ?? ''),
+      })
+      : authenticate(email, password);
+    setSubmitting(false);
     if (!found) { setError(mode === 'register' ? 'An account with that email already exists.' : 'That email or password is not recognised. Try the demo credentials shown below.'); return; }
     storage.saveSession(found); onLogin(found);
   };
-  return <div className="auth-page"><div className="auth-card"><div className="brand auth-brand"><span className="brand-mark"><HeartHandshake /></span><span>Shakti<span>SOS</span></span></div><span className="eyebrow">YOUR SAFETY, YOUR TERMS</span><h1>{mode === 'login' ? 'Welcome back.' : 'Create your safe space.'}</h1><p className="muted">A private safety companion with help when you choose it.</p><form onSubmit={submit}>{mode === 'register' && <label>Full name<input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Aarohi Sharma" /></label>}<label>Email<input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label><label>Password<input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>{error && <div className="error-message">{error}</div>}<button className="button button-primary full-width">{mode === 'login' ? 'Log in securely' : 'Create account'} <ChevronRight size={18} /></button></form><div className="demo-hint"><strong>Demo access</strong><br />User: user@shaktisos.demo / demo123<br />Operator: operator@shaktisos.demo / demo123</div><button className="text-button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}>{mode === 'login' ? 'Need an account? Register' : 'Already have an account? Log in'}</button></div></div>;
+  return <div className="auth-page"><div className="auth-card"><div className="brand auth-brand"><span className="brand-mark"><HeartHandshake /></span><span>Shakti<span>SOS</span></span></div><span className="eyebrow">{mode === 'login' ? 'YOUR SAFETY, YOUR TERMS' : 'IDENTITY VERIFICATION DEMO'}</span><h1>{mode === 'login' ? 'Welcome back.' : 'Create your safe space.'}</h1><p className="muted">{mode === 'login' ? 'A private safety companion with help when you choose it.' : 'Identity verification is simulated. ShaktiSOS does not connect to Aadhaar APIs or government systems.'}</p><form onSubmit={submit}>{mode === 'register' && <><label>Full name<input name="fullName" required placeholder="Aarohi Sharma" /></label><label>Mobile number<input name="mobileNumber" required type="tel" placeholder="+91 98765 43210" /></label><label>Date of birth<input name="dateOfBirth" required type="date" /></label><label>Address<textarea name="address" required rows={2} placeholder="Your address" /></label><label>Aadhaar number<input name="aadhaarNumber" required inputMode="numeric" pattern="[0-9]{12}" maxLength={12} placeholder="12 digits" /><small className="field-help">Stored as a SHA-256 hash; only XXXX-XXXX-last 4 is shown to reviewers.</small></label><div className="registration-contact"><strong>Emergency contact</strong><label>Name<input name="emergencyContactName" required /></label><label>Phone<input name="emergencyContactPhone" required type="tel" /></label><label>Relationship<input name="emergencyContactRelationship" required placeholder="Sister, friend..." /></label></div><label className="consent-label"><input name="identityConsent" required type="checkbox" /> I consent to simulated identity verification and understand this demo does not contact government systems.</label></>}<label>Email<input name="email" required type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label><label>Password<input name="password" required type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>{error && <div className="error-message">{error}</div>}<button disabled={submitting} className="button button-primary full-width">{submitting ? 'Submitting securely…' : mode === 'login' ? 'Log in securely' : 'Submit for verification'} <ChevronRight size={18} /></button></form><div className="demo-hint"><strong>Demo access</strong><br />User: user@shaktisos.demo / demo123<br />Operator: operator@shaktisos.demo / demo123<br />Admin: admin@shaktisos.demo / demo123</div><button className="text-button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}>{mode === 'login' ? 'Need an account? Register' : 'Already have an account? Log in'}</button></div></div>;
 }
 
 function HomeScreen({ user, activeAlert, stealthMode, device, onSos, onNavigate }: { user: User; activeAlert?: SOSAlert; stealthMode: boolean; device: Device; onSos: () => void; onNavigate: (screen: Screen) => void }) {
@@ -178,7 +201,23 @@ function OperatorDashboard({ alerts, onUpdate }: { alerts: SOSAlert[]; onUpdate:
   };
   return <><div className="operator-heading"><div><span className="eyebrow">RESPONSE CENTRE</span><h1>Good evening, operator.</h1><p className="muted">Monitor simulated alerts. No real dispatch is performed.</p></div><span className="operator-badge"><ShieldCheck size={15} /> OPERATOR</span></div><div className="operator-stats"><Stat icon={<Siren />} label="Active alerts" value={String(active.length)} /><Stat icon={<Check />} label="Resolved today" value={String(alerts.filter((alert) => alert.status === 'RESOLVED').length)} /><Stat icon={<Activity />} label="System status" value="Online" /></div><div className="misuse-dashboard"><h2>False SOS accountability</h2><div className="misuse-grid"><Stat icon={<AlertTriangle />} label="Total false alerts" value={String(falseAlerts)} /><Stat icon={<Bell />} label="Warning count" value={String(warnings)} /><Stat icon={<ShieldCheck />} label="Restriction status" value={restriction ? 'Restricted' : 'Clear'} /><Stat icon={<ShieldCheck />} label="Suspension status" value={suspended ? 'Suspended' : 'Clear'} /><Stat icon={<Activity />} label="Accidental triggers" value={String(accidentalTriggers)} /></div><small>Warnings and restrictions are demo workflow states only. No fines or legal penalties are automatically imposed.</small></div><div className="operator-table-wrap"><div className="section-heading"><div><span className="eyebrow">LIVE QUEUE</span><h2>Active alerts</h2></div><span className="live-badge"><span className="pulse-dot" /> LIVE</span></div>{active.length === 0 ? <EmptyState text="No active alerts. The response queue is clear." /> : <div className="alert-table">{active.map((alert) => <button className="alert-row" key={alert.id} onClick={() => setSelected(alert)}><strong>{alert.id}</strong><span>Aarohi Sharma</span><span>{new Date(alert.createdAt).toLocaleTimeString()}</span><span>{alert.location.latitude.toFixed(3)}, {alert.location.longitude.toFixed(3)}</span><span className={`status-chip ${alert.status.toLowerCase().replaceAll(' ', '-')}`}>{alert.status}</span><ChevronRight size={17} /></button>)}</div>}</div>{selected && <div className="modal-backdrop"><div className="modal-card drawer"><div className="modal-heading"><div><span className="eyebrow">ALERT DETAIL</span><h2>{selected.id}</h2></div><button className="icon-button" onClick={() => setSelected(null)} aria-label="Close"><X /></button></div><div className="detail-grid"><span>Current status</span><strong>{selected.status}</strong><span>Coordinates</span><strong>{selected.location.latitude.toFixed(5)}, {selected.location.longitude.toFixed(5)}</strong><span>Contact notification</span><strong>{selected.contactNotification}</strong><span>Satellite simulation</span><strong>{selected.satelliteTransmission}</strong><span>Classification</span><strong>{selected.classification ?? 'Unclassified'}</strong></div><h3>Evidence</h3>{selected.evidence.length === 0 ? <p className="muted">No evidence uploaded.</p> : selected.evidence.map((item) => <div className="evidence-item" key={item.id}><span>{item.kind === 'Photo' ? <Camera size={16} /> : <Video size={16} />}</span><strong>{item.kind}</strong><small>{item.status} · simulated</small></div>)}<h3>Classify alert</h3><div className="classification-row">{(['Genuine Emergency', 'Accidental Trigger', 'False Alert / Misuse'] as AlertClassification[]).map((classification) => <button className="button button-secondary" key={classification} onClick={() => classify(selected, classification)}>{classification}</button>)}</div><h3>Audit timeline</h3>{selected.auditHistory.map((item) => <div className="timeline-item" key={item.id}><span className="timeline-dot"><Check size={12} /></span><div><strong>{item.action}</strong><small>{new Date(item.timestamp).toLocaleString()}</small></div></div>)}<div className="button-row operator-actions">{statusLabels.slice(1, 3).map((status) => <button key={status} className="button button-secondary" disabled={selected.status === status || selected.status === 'RESOLVED'} onClick={() => { const next = { ...selected, status, auditHistory: [...selected.auditHistory, { id: crypto.randomUUID(), alertId: selected.id, action: `Operator: ${status.toLowerCase()}`, timestamp: new Date().toISOString() }] }; onUpdate(next); setSelected(next); }}>{status === 'ACKNOWLEDGED' ? 'Acknowledge' : 'Dispatch assistance'}</button>)}<button className="button button-primary" onClick={() => { const next = { ...selected, status: 'RESOLVED' as const, auditHistory: [...selected.auditHistory, { id: crypto.randomUUID(), alertId: selected.id, action: 'Operator: incident resolved', timestamp: new Date().toISOString() }] }; onUpdate(next); setSelected(null); }}>Resolve incident</button></div></div></div>}</>; }
 
-function PageHeader({ eyebrow, title, action }: { eyebrow: string; title: string; action?: React.ReactNode }) { return <div className="page-header"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1></div>{action}</div>; }
+  function AdminDashboard() {
+    const [identities, setIdentities] = useState<IdentityVerification[]>(storage.identities());
+    const [selected, setSelected] = useState<IdentityVerification | null>(null);
+    const updateStatus = (identity: IdentityVerification, status: VerificationStatus) => {
+      const reviewedAt = new Date().toISOString();
+      const nextIdentity = { ...identity, status, reviewedAt, reviewedBy: 'admin-1' };
+      const nextIdentities = identities.map((item) => item.id === identity.id ? nextIdentity : item);
+      setIdentities(nextIdentities);
+      storage.saveIdentities(nextIdentities);
+      storage.saveUsers(storage.users().map((user) => user.id === identity.userId ? { ...user, verificationStatus: status } : user));
+      setSelected(nextIdentity);
+    };
+    const pending = identities.filter((identity) => identity.status === 'Pending Verification').length;
+    return <><div className="operator-heading"><div><span className="eyebrow">IDENTITY ADMINISTRATION</span><h1>Registration review.</h1><p className="muted">Review simulated identity submissions. Aadhaar is never displayed in full.</p></div><span className="operator-badge"><ShieldCheck size={15} /> ADMIN</span></div><div className="operator-stats"><Stat icon={<UserRound />} label="Pending reviews" value={String(pending)} /><Stat icon={<Check />} label="Verified" value={String(identities.filter((identity) => identity.status === 'Verified').length)} /><Stat icon={<AlertTriangle />} label="Rejected" value={String(identities.filter((identity) => identity.status === 'Rejected').length)} /></div><div className="operator-table-wrap"><div className="section-heading"><div><span className="eyebrow">SIMULATED VERIFICATION QUEUE</span><h2>User registrations</h2></div></div>{identities.length === 0 ? <EmptyState text="No identity submissions yet." /> : <div className="alert-table">{identities.map((identity) => <button className="alert-row identity-row" key={identity.id} onClick={() => setSelected(identity)}><strong>{identity.fullName}</strong><span>{identity.mobileNumber}</span><span>{identity.aadhaarMasked}</span><span>{identity.dateOfBirth}</span><span className={`status-chip ${identity.status.toLowerCase().replaceAll(' ', '-')}`}>{identity.status}</span><ChevronRight size={17} /></button>)}</div>}</div>{selected && <div className="modal-backdrop"><div className="modal-card drawer"><div className="modal-heading"><div><span className="eyebrow">IDENTITY REVIEW</span><h2>{selected.fullName}</h2></div><button className="icon-button" onClick={() => setSelected(null)} aria-label="Close"><X /></button></div><div className="privacy-panel"><ShieldCheck size={20} /><div><strong>Protected identity data</strong><p>Only a masked Aadhaar value is available in this demo. The full number is never rendered or stored in plaintext.</p></div></div><div className="detail-grid"><span>Mobile</span><strong>{selected.mobileNumber}</strong><span>Email</span><strong>{storage.users().find((user) => user.id === selected.userId)?.email ?? 'Private'}</strong><span>Date of birth</span><strong>{selected.dateOfBirth}</strong><span>Address</span><strong>{selected.address}</strong><span>Aadhaar</span><strong>{selected.aadhaarMasked}</strong><span>Emergency contact</span><strong>{selected.emergencyContactName} · {selected.emergencyContactPhone}</strong><span>Consent captured</span><strong>{new Date(selected.consentedAt).toLocaleString()}</strong></div><div className="button-row operator-actions"><button className="button button-primary" onClick={() => updateStatus(selected, 'Verified')}>Approve identity</button><button className="button button-secondary" onClick={() => updateStatus(selected, 'Rejected')}>Reject account</button></div></div></div>}</>;
+  }
+
+  function PageHeader({ eyebrow, title, action }: { eyebrow: string; title: string; action?: React.ReactNode }) { return <div className="page-header"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1></div>{action}</div>; }
 function EmptyState({ text }: { text: string }) { return <div className="empty-state"><CircleHelp size={24} /><p>{text}</p></div>; }
 function NavButton({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) { return <button className={active ? 'nav-item active' : 'nav-item'} onClick={onClick}>{icon}<span>{label}</span></button>; }
 

@@ -15,13 +15,15 @@ ShaktiSOS uses an explicit-consent emergency model:
 
 ## Features
 
-- User and emergency-operator authentication with role-protected views.
+- User, emergency-operator, and admin authentication with role-protected views.
 - Trusted contact add, edit, remove, relationship, phone, and optional email validation.
 - Simulated Shakti Beacon pairing, disconnect/reconnect, battery, firmware, and signal state.
 - SOS countdown, cancellation, simulated notifications, location history, audit timeline, and closure.
 - Emergency evidence controls for camera-permission requests, simulated photos, short video clips, upload state tracking, and operator evidence review.
 - False SOS accountability with accidental-trigger tracking, operator classification, audit history, and demo-only warning/restriction/suspension workflow states.
 - Stealth emergency simulator with secret PIN, secret gesture, and simulated triple power-button triggers.
+- Registration identity verification flow requiring full name, mobile, email, date of birth, address, 12-digit Aadhaar, emergency contact details, and explicit consent.
+- Admin-only simulated identity review with Pending Verification, Verified, and Rejected states.
 - Operator queue with acknowledge, assistance-dispatched, and resolve actions.
 - Responsive mobile-first UI with keyboard-friendly controls, labels, high-contrast status badges, loading/error-safe service boundaries, and privacy disclosures.
 
@@ -58,6 +60,7 @@ No secrets or environment variables are required for the local demonstration. Pr
 
 - User: `user@shaktisos.demo` / `demo123`
 - Operator: `operator@shaktisos.demo` / `demo123`
+- Admin: `admin@shaktisos.demo` / `demo123`
 
 ## Running frontend, build, and tests
 
@@ -69,7 +72,7 @@ npm test
 
 ## Privacy and security model
 
-Role checks are enforced at the view boundary: user accounts see the personal safety experience, while operator accounts see the response queue. SOS location access is event-triggered rather than continuous. The browser geolocation API is not called automatically; demo coordinates are used to make the simulator deterministic and safe. Real authentication, password hashing, server-side authorization, rate limiting, audit storage, and encrypted transport are required before production use.
+Role checks are enforced at the view boundary: user accounts see the personal safety experience, operator accounts see the response queue, and admin accounts see identity review. Registration requires explicit consent to simulated identity verification. Aadhaar is validated as 12 digits, stored only as a SHA-256 digest with a masked last-four display value, and never rendered in full. This is not a substitute for server-side encryption, key management, secure identity storage, or a compliant Aadhaar integration. ShaktiSOS does not connect to real Aadhaar APIs or government systems. SOS location access is event-triggered rather than continuous. The browser geolocation API is not called automatically; demo coordinates are used to make the simulator deterministic and safe. Real authentication, password hashing, server-side authorization, rate limiting, audit storage, and encrypted transport are required before production use.
 
 ## Limitations
 

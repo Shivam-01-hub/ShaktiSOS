@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { appendSimulatedLocation, createDemoAlert } from './sosService';
 import { notifyContacts, resolveAlert, sendSatelliteMessageSimulation } from './notificationService';
 import { createEvidence, progressEvidence } from './evidenceService';
+import { maskAadhaar, registerUser, resetDemoData, storage } from './storage';
 import type { Device } from '../types';
 
 const device: Device = { id: 'demo', name: 'Beacon', batteryLevel: 80, signalStrength: 'Strong', pairingStatus: 'Paired', firmwareVersion: 'demo' };
 
 describe('ShaktiSOS emergency workflow', () => {
-  beforeEach(() => { vi.stubGlobal('crypto', { randomUUID: () => 'test-id' }); });
+  beforeEach(() => { vi.stubGlobal('crypto', { randomUUID: () => 'test-id', subtle: globalThis.crypto.subtle }); resetDemoData(); });
 
   it('creates an alert and notifies contacts', () => {
     const alert = createDemoAlert('user-1', device);
@@ -44,5 +45,25 @@ describe('ShaktiSOS emergency workflow', () => {
     expect(recording).toMatchObject({ kind: 'Video', status: 'Recording', simulated: true });
     expect(progressEvidence(recording, 'Uploading').status).toBe('Uploading');
     expect(progressEvidence(recording, 'Uploaded').status).toBe('Uploaded');
+  });
+
+  it('validates and protects registration identity data', async () => {
+    expect(maskAadhaar('123456789012')).toBe('XXXX-XXXX-9012');
+    const user = await registerUser({
+      fullName: 'Test User',
+      mobileNumber: '+91 90000 00000',
+      email: 'test-registration@example.com',
+      password: 'demo123',
+      dateOfBirth: '1995-01-01',
+      address: 'Demo address',
+      aadhaarNumber: '123456789012',
+      emergencyContactName: 'Trusted Person',
+      emergencyContactPhone: '+91 91111 11111',
+      emergencyContactRelationship: 'Friend',
+    });
+    expect(user?.verificationStatus).toBe('Pending Verification');
+    const identity = storage.identities().find((item) => item.userId === user?.id);
+    expect(identity?.aadhaarMasked).toBe('XXXX-XXXX-9012');
+    expect(identity?.aadhaarHash).not.toContain('123456789012');
   });
 });

@@ -1,4 +1,5 @@
-export type Role = 'user' | 'trusted-contact' | 'operator';
+export type Role = 'user' | 'trusted-contact' | 'operator' | 'admin';
+export type VerificationStatus = 'Pending Verification' | 'Verified' | 'Rejected';
 export type AlertStatus = 'RECEIVED' | 'ACKNOWLEDGED' | 'ASSISTANCE DISPATCHED' | 'RESOLVED';
 export type DeliveryStatus = 'Pending' | 'Delivered' | 'Failed';
 export type SignalStrength = 'Strong' | 'Medium' | 'Weak' | 'Unavailable';
@@ -12,6 +13,25 @@ export interface User {
   email: string;
   password: string;
   role: Role;
+  verificationStatus: VerificationStatus;
+}
+
+export interface IdentityVerification {
+  id: string;
+  userId: string;
+  fullName: string;
+  mobileNumber: string;
+  dateOfBirth: string;
+  address: string;
+  aadhaarHash: string;
+  aadhaarMasked: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  emergencyContactRelationship: string;
+  consentedAt: string;
+  status: VerificationStatus;
+  reviewedAt?: string;
+  reviewedBy?: string;
 }
 
 export interface EmergencyContact {
